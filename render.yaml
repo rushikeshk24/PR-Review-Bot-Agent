@@ -1,0 +1,87 @@
+services:
+  # =======================================================
+  # 1. CodeLens Backend API (NestJS + Fastify)
+  # =======================================================
+  - type: web
+    name: codelens-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: pnpm install --frozen-lockfile=false && pnpm --filter @codelens/database db:generate && pnpm --filter @codelens/database db:push && pnpm --filter @codelens/api build
+    startCommand: node apps/api/dist/main.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: codelens-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: codelens-redis
+          property: connectionString
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+      - key: GITHUB_PRIVATE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-flash-latest
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: codelens-web
+          property: host
+
+  # =======================================================
+  # 2. CodeLens Frontend Web (Next.js 14)
+  # =======================================================
+  - type: web
+    name: codelens-web
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: pnpm install --frozen-lockfile=false && pnpm --filter @codelens/web build
+    startCommand: pnpm --filter @codelens/web start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: codelens-api
+          property: host
+      - key: NEXTAUTH_URL
+        fromService:
+          type: web
+          name: codelens-web
+          property: host
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+
+# =======================================================
+# 3. Managed PostgreSQL Database
+# =======================================================
+databases:
+  - name: codelens-db
+    plan: free
+    region: oregon
+    databaseName: codelens
+    user: codelens_user
+
+# =======================================================
+# 4. Managed Redis
+# =======================================================
+# Note: Render provides Redis services (or you can use free Upstash Redis)

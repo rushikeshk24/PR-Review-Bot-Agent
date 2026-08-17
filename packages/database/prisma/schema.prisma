@@ -1,0 +1,354 @@
+// ─── Prisma Schema for CodeLens AI ───
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───
+
+enum InstallationStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AccountType {
+  USER
+  ORGANIZATION
+}
+
+enum ReviewStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum BlockingMode {
+  STRICT
+  ADVISORY
+}
+
+enum SeverityLevel {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum MarketplacePlanStatus {
+  ACTIVE
+  CANCELLED
+  PENDING_CHANGE
+  FREE_TRIAL
+}
+
+// ─── Installations ───
+
+model Installation {
+  id                    String             @id @default(uuid())
+  githubInstallationId  BigInt             @unique
+  accountType           AccountType
+  accountLogin          String
+  accountId             BigInt
+  accountAvatarUrl      String?
+  status                InstallationStatus @default(ACTIVE)
+  permissions           Json?
+  events                String[]
+  repositorySelection   String?            @default("all") // "all" or "selected"
+  installedAt           DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  repositories          Repository[]
+  settings              InstallationSettings?
+  marketplacePlan       MarketplacePlan?
+
+  @@index([accountLogin])
+  @@index([status])
+}
+
+// ─── Installation Settings (org-wide defaults) ───
+
+model InstallationSettings {
+  id                      String          @id @default(uuid())
+  installationId          String          @unique
+  installation            Installation    @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  defaultBlockingMode     BlockingMode    @default(ADVISORY)
+  defaultSeverityThreshold SeverityLevel  @default(ERROR)
+  defaultIgnoredGlobs     String[]        @default([])
+  defaultCustomPrompt     String?
+  defaultAutoReview       Boolean         @default(true)
+  defaultModelTier        String          @default("flash")
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+}
+
+enum FindingStatus {
+  OPEN
+  RESOLVED
+  IGNORED
+}
+
+// ─── Repositories ───
+
+model Repository {
+  id                String          @id @default(uuid())
+  installationId    String
+  installation      Installation    @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  githubRepoId      BigInt
+  name              String
+  fullName          String
+  isPrivate         Boolean         @default(false)
+  defaultBranch     String          @default("main")
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  settings          RepoSettings?
+  pullRequests      PullRequest[]
+  reviews           PRReview[]
+
+  @@unique([installationId, githubRepoId])
+  @@index([installationId])
+  @@index([fullName])
+}
+
+// ─── Per-Repo Settings ───
+
+model RepoSettings {
+  id                  String          @id @default(uuid())
+  repositoryId        String          @unique
+  repository          Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  blockingMode        BlockingMode    @default(ADVISORY)
+  severityThreshold   SeverityLevel   @default(ERROR)
+  ignoredGlobs        String[]        @default([])
+  customPrompt        String?
+  autoReview          Boolean         @default(true)
+  maxFilesPerReview   Int             @default(50)
+  modelTier           String          @default("flash")
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+}
+
+// ─── Pull Requests (Lifecycle Tracking) ───
+
+model PullRequest {
+  id                  String          @id @default(uuid())
+  repositoryId        String
+  repository          Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  pullNumber          Int
+  title               String
+  author              String
+  authorAvatar        String?
+  baseBranch          String          @default("main")
+  headBranch          String
+  headSha             String
+  state               String          @default("OPEN") // "OPEN" | "CLOSED" | "MERGED"
+  isBlocked           Boolean         @default(false)
+  blockingIssueCount  Int             @default(0)
+  totalIssueCount     Int             @default(0)
+  resolvedIssueCount  Int             @default(0)
+  currentIteration    Int             @default(1)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  reviews             PRReview[]
+  findings            Finding[]
+
+  @@unique([repositoryId, pullNumber])
+  @@index([repositoryId])
+  @@index([headSha])
+}
+
+// ─── PR Reviews (Iterations across Pushes) ───
+
+model PRReview {
+  id                  String          @id @default(uuid())
+  repositoryId        String
+  repository          Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  pullRequestId       String?
+  pullRequest         PullRequest?    @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+  iterationNumber     Int             @default(1)
+  pullNumber          Int
+  commitSha           String
+  status              ReviewStatus    @default(PENDING)
+  summary             String?
+  overallScore        Int?
+  findings            Json?           // Structured raw findings for this iteration
+  blockingIssueCount  Int             @default(0)
+  resolvedDeltaCount  Int             @default(0)     // Count of issues resolved in this iteration
+  checkRunId          BigInt?
+  checkConclusion     String?         // "success" | "failure" | "neutral"
+  tokensUsed          Int?
+  modelUsed           String?
+  durationMs          Int?
+  errorMessage        String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  comments            ReviewComment[]
+  iterationFindings   Finding[]
+  overrides           Override[]
+
+  @@index([repositoryId, pullNumber])
+  @@index([pullRequestId, iterationNumber])
+  @@index([repositoryId, createdAt])
+  @@index([status])
+}
+
+// ─── Findings (Fingerprinted Issue Tracking Across Commits) ───
+
+model Finding {
+  id                  String          @id @default(uuid())
+  pullRequestId       String
+  pullRequest         PullRequest     @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+  prReviewId          String?
+  prReview            PRReview?       @relation(fields: [prReviewId], references: [id], onDelete: SetNull)
+  fingerprint         String          // hash(filePath + category + normalized title)
+  filePath            String
+  line                Int
+  endLine             Int?
+  severity            SeverityLevel
+  category            String          // security, bug, performance, etc.
+  title               String
+  description         String
+  suggestedFix        String?
+  blocking            Boolean         @default(false)
+  status              FindingStatus   @default(OPEN) // OPEN | RESOLVED | IGNORED
+  firstSeenSha        String
+  resolvedSha         String?
+  firstSeenIteration  Int             @default(1)
+  resolvedIteration   Int?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  @@index([pullRequestId, fingerprint])
+  @@index([pullRequestId, status])
+  @@index([fingerprint])
+}
+
+// ─── Individual Review Comments (posted to GitHub) ───
+
+model ReviewComment {
+  id                String          @id @default(uuid())
+  prReviewId        String
+  prReview          PRReview        @relation(fields: [prReviewId], references: [id], onDelete: Cascade)
+  file              String
+  line              Int
+  endLine           Int?
+  severity          SeverityLevel
+  title             String
+  body              String
+  suggestedFix      String?
+  category          String?
+  githubCommentId   BigInt?
+  resolved          Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([prReviewId])
+  @@index([file, line])
+}
+
+// ─── Override Audit Log ───
+
+model Override {
+  id                  String        @id @default(uuid())
+  prReviewId          String
+  prReview            PRReview      @relation(fields: [prReviewId], references: [id], onDelete: Cascade)
+  actor               String        // GitHub login of the user who overrode
+  actorId             BigInt?       // GitHub user ID
+  reason              String?       // Optional reason from the override command
+  previousConclusion  String        // e.g. "failure"
+  newConclusion       String        // e.g. "neutral" or "success"
+  method              String        @default("comment") // "comment" | "dashboard"
+  createdAt           DateTime      @default(now())
+
+  @@index([prReviewId])
+  @@index([actor])
+  @@index([createdAt])
+}
+
+// ─── Marketplace Billing ───
+
+model MarketplacePlan {
+  id                        String                @id @default(uuid())
+  installationId            String                @unique
+  installation              Installation          @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  githubPlanId              Int?
+  planName                  String                @default("free")
+  planTier                  String                @default("free") // "free" | "pro" | "team"
+  status                    MarketplacePlanStatus @default(ACTIVE)
+  billingCycle              String?               // "monthly" | "yearly"
+  unitCount                 Int                   @default(1)
+  onFreeTrial               Boolean               @default(false)
+  freeTrialEndsOn           DateTime?
+  nextBillingDate           DateTime?
+  monthlyPriceCents         Int                   @default(0)
+  yearlyPriceCents          Int                   @default(0)
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+}
+
+// ─── Usage Tracking ───
+
+model UsageRecord {
+  id                  String        @id @default(uuid())
+  installationId      String
+  period              String        // "YYYY-MM" format
+  reviewCount         Int           @default(0)
+  tokensUsed          Int           @default(0)
+  estimatedCostCents  Int           @default(0)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@unique([installationId, period])
+  @@index([installationId])
+}
+
+// ─── Dashboard Users (GitHub OAuth) ───
+
+model User {
+  id                String        @id @default(uuid())
+  githubId          String        @unique
+  githubLogin       String
+  name              String?
+  email             String?       @unique
+  avatarUrl         String?
+  role              String        @default("admin") // "admin" | "viewer"
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([githubLogin])
+}
+
+// ─── Codebase Audit (full-repo AI audit, no PR needed) ───
+
+model CodebaseAudit {
+  id            String    @id @default(cuid())
+  repoFullName  String
+  repoUrl       String
+  branch        String
+  commitSha     String?
+  status        String    @default("COMPLETED") // "COMPLETED" | "FAILED"
+  overallScore  Int?
+  summary       String?
+  positives     String[]  @default([])
+  recommendations String[] @default([])
+  findings      Json?     // Array of AuditFinding
+  fileCount     Int?
+  linesAnalyzed Int?
+  modelUsed     String?
+  durationMs    Int?
+  errorMessage  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([repoFullName])
+  @@index([createdAt])
+}

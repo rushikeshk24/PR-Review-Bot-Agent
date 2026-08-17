@@ -1,0 +1,40 @@
+{
+  "$schema": "https://nx.dev/reference/nx-json",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "sharedGlobals": ["{workspaceRoot}/tsconfig.base.json"],
+    "production": ["default", "!{projectRoot}/**/*.spec.ts", "!{projectRoot}/test/**/*"]
+  },
+  "targetDefaults": {
+    "build": {
+      "dependsOn": ["^build", "^db:generate"],
+      "inputs": ["production", "^production"],
+      "cache": true
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "inputs": ["default", "{workspaceRoot}/.eslintrc*"],
+      "cache": true
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "^db:generate"],
+      "cache": true
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^default"],
+      "cache": true
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
+    }
+  },
+  "defaultBase": "main"
+}

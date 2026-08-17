@@ -1,0 +1,31 @@
+{
+  "name": "codelens-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered PR code review bot for GitHub",
+  "scripts": {
+    "dev": "nx run-many --target=dev --parallel=3",
+    "dev:api": "nx dev @codelens/api",
+    "dev:web": "nx dev @codelens/web",
+    "build": "nx run-many --target=build",
+    "lint": "nx run-many --target=lint",
+    "typecheck": "nx run-many --target=typecheck",
+    "test": "nx run-many --target=test",
+    "db:generate": "nx run @codelens/database:db:generate",
+    "db:migrate": "nx run @codelens/database:db:migrate",
+    "db:push": "nx run @codelens/database:db:push",
+    "db:studio": "nx run @codelens/database:db:studio",
+    "clean": "nx run-many --target=clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "nx": "19.8.4",
+    "typescript": "^5.5.4",
+    "prettier": "^3.3.3",
+    "@types/node": "^20.14.0"
+  },
+  "packageManager": "pnpm@9.7.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
