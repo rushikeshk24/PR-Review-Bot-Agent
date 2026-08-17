@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -29,23 +29,17 @@ export function createTenantPrisma(installationId: string) {
       query: {
         repository: {
           async findMany({ args, query }) {
-            const where: Prisma.RepositoryWhereInput = {
-              ...(args.where as Prisma.RepositoryWhereInput | undefined),
+            args.where = Object.assign({}, args.where, {
               installationId,
-            };
-
-            args.where = where;
+            });
 
             return query(args);
           },
 
           async findFirst({ args, query }) {
-            const where: Prisma.RepositoryWhereInput = {
-              ...(args.where as Prisma.RepositoryWhereInput | undefined),
+            args.where = Object.assign({}, args.where, {
               installationId,
-            };
-
-            args.where = where;
+            });
 
             return query(args);
           },
@@ -53,14 +47,11 @@ export function createTenantPrisma(installationId: string) {
 
         pRReview: {
           async findMany({ args, query }) {
-            const where: Prisma.PRReviewWhereInput = {
-              ...(args.where as Prisma.PRReviewWhereInput | undefined),
+            args.where = Object.assign({}, args.where, {
               repository: {
                 installationId,
               },
-            };
-
-            args.where = where;
+            });
 
             return query(args);
           },
