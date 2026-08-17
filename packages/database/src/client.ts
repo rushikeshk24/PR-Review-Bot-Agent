@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -19,7 +19,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 /**
  * Tenant-scoped Prisma client extension.
- * Enforces `installationId` filtering on repository and PRReview queries.
+ * Enforces installationId filtering on repository and PRReview queries.
  */
 export function createTenantPrisma(installationId: string) {
   return prisma.$extends(
@@ -29,19 +29,23 @@ export function createTenantPrisma(installationId: string) {
       query: {
         repository: {
           async findMany({ args, query }) {
-            args.where = {
-              ...(args.where ?? {}),
+            const where: Prisma.RepositoryWhereInput = {
+              ...(args.where as Prisma.RepositoryWhereInput | undefined),
               installationId,
             };
+
+            args.where = where;
 
             return query(args);
           },
 
           async findFirst({ args, query }) {
-            args.where = {
-              ...(args.where ?? {}),
+            const where: Prisma.RepositoryWhereInput = {
+              ...(args.where as Prisma.RepositoryWhereInput | undefined),
               installationId,
             };
+
+            args.where = where;
 
             return query(args);
           },
@@ -49,12 +53,14 @@ export function createTenantPrisma(installationId: string) {
 
         pRReview: {
           async findMany({ args, query }) {
-            args.where = {
-              ...(args.where ?? {}),
+            const where: Prisma.PRReviewWhereInput = {
+              ...(args.where as Prisma.PRReviewWhereInput | undefined),
               repository: {
                 installationId,
               },
             };
+
+            args.where = where;
 
             return query(args);
           },
