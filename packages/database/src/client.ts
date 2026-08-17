@@ -25,11 +25,12 @@ export function createTenantPrisma(installationId: string) {
   return prisma.$extends(
     Prisma.defineExtension({
       name: 'tenant-scoped',
+
       query: {
         repository: {
           async findMany({ args, query }) {
             args.where = {
-              ...args.where,
+              ...(args.where ?? {}),
               installationId,
             };
 
@@ -38,7 +39,7 @@ export function createTenantPrisma(installationId: string) {
 
           async findFirst({ args, query }) {
             args.where = {
-              ...args.where,
+              ...(args.where ?? {}),
               installationId,
             };
 
@@ -49,7 +50,7 @@ export function createTenantPrisma(installationId: string) {
         pRReview: {
           async findMany({ args, query }) {
             args.where = {
-              ...args.where,
+              ...(args.where ?? {}),
               repository: {
                 installationId,
               },
