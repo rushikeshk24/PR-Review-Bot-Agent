@@ -3,6 +3,8 @@
 > **Developed by Rushi Karlekar**  
 > An enterprise-grade, multi-language GitHub App and AI Code Review platform powered by **Google Gemini 2.0 (Structured Reasoning)**. Automatically analyzes pull requests, enforces merge controls via GitHub Checks, tracks issue lifecycles across multi-commit pushes, and provides a full codebase security & health audit dashboard.
 
+🌐 **Live Demo:** https://your-frontend-url.onrender.com
+
 ---
 
 ## 🌟 Architecture & Workflow
