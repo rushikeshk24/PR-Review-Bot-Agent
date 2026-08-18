@@ -3,9 +3,13 @@ import * as crypto from 'crypto';
 import { prisma } from '@codelens/database';
 import { CodeFinding, meetsThreshold } from '@codelens/shared';
 
+type FindingRecord = Awaited<
+  ReturnType<typeof prisma.finding.findMany>
+>[number];
+
 export interface ReconcileResult {
-  activeFindings: any[];
-  resolvedInIteration: any[];
+  activeFindings: FindingRecord[];
+  resolvedInIteration: FindingRecord[];
   blockingCount: number;
   isBlocked: boolean;
   totalOpenCount: number;
@@ -31,7 +35,12 @@ export class IssueTrackerService {
       .slice(0, 80);
 
     const input = `${normFile}::${normCat}::${normTitle}`;
-    return crypto.createHash('sha256').update(input).digest('hex').slice(0, 24);
+
+    return crypto
+      .createHash('sha256')
+      .update(input)
+      .digest('hex')
+      .slice(0, 24);
   }
 
   /**
@@ -58,37 +67,51 @@ export class IssueTrackerService {
     } = params;
 
     this.logger.log(
-      `Reconciling ${findings.length} findings for PR ${pullRequestId} (Iter #${iterationNumber}, SHA: ${commitSha.slice(0, 7)})`
+      `Reconciling ${findings.length} findings for PR ${pullRequestId} (Iter #${iterationNumber}, SHA: ${commitSha.slice(0, 7)})`,
     );
 
     // 1. Fetch all existing OPEN findings for this PR
-    const existingOpenFindings = await prisma.finding.findMany({
-      where: {
-        pullRequestId,
-        status: 'OPEN',
-      },
-    });
+    const existingOpenFindings: FindingRecord[] =
+      await prisma.finding.findMany({
+        where: {
+          pullRequestId,
+          status: 'OPEN',
+        },
+      });
 
-    const existingByFingerprint = new Map(
-      existingOpenFindings.map((f) => [f.fingerprint, f])
+    const existingByFingerprint = new Map<string, FindingRecord>(
+      existingOpenFindings.map(
+        (f) => [f.fingerprint, f] as const,
+      ),
     );
 
     const seenFingerprints = new Set<string>();
-    const resolvedInIteration: any[] = [];
-    const activeFindings: any[] = [];
+    const resolvedInIteration: FindingRecord[] = [];
+    const activeFindings: FindingRecord[] = [];
 
     // 2. Process all findings from current review iteration
     for (const f of findings) {
-      const fingerprint = this.computeFingerprint(f.file, f.category, f.title);
+      const fingerprint = this.computeFingerprint(
+        f.file,
+        f.category,
+        f.title,
+      );
+
       seenFingerprints.add(fingerprint);
 
-      const isBlocking = meetsThreshold(f.severity, severityThreshold);
+      const isBlocking = meetsThreshold(
+        f.severity,
+        severityThreshold,
+      );
+
       const existing = existingByFingerprint.get(fingerprint);
 
       if (existing) {
         // Issue is STILL OPEN — update location/context and associate with latest review
         const updated = await prisma.finding.update({
-          where: { id: existing.id },
+          where: {
+            id: existing.id,
+          },
           data: {
             filePath: f.file,
             line: f.line,
@@ -99,6 +122,7 @@ export class IssueTrackerService {
             prReviewId,
           },
         });
+
         activeFindings.push(updated);
       } else {
         // Brand new issue detected in this iteration
@@ -121,6 +145,7 @@ export class IssueTrackerService {
             firstSeenIteration: iterationNumber,
           },
         });
+
         activeFindings.push(created);
       }
     }
@@ -129,33 +154,51 @@ export class IssueTrackerService {
     for (const [fp, existingFinding] of existingByFingerprint.entries()) {
       if (!seenFingerprints.has(fp)) {
         const resolved = await prisma.finding.update({
-          where: { id: existingFinding.id },
+          where: {
+            id: existingFinding.id,
+          },
           data: {
             status: 'RESOLVED',
             resolvedSha: commitSha,
             resolvedIteration: iterationNumber,
           },
         });
+
         resolvedInIteration.push(resolved);
+
         this.logger.log(
-          `Issue "${resolved.title}" (${resolved.filePath}:${resolved.line}) marked RESOLVED in iter #${iterationNumber}`
+          `Issue "${resolved.title}" (${resolved.filePath}:${resolved.line}) marked RESOLVED in iter #${iterationNumber}`,
         );
       }
     }
 
     // 4. Calculate total PR summary stats
-    const allFindingsForPR = await prisma.finding.findMany({
-      where: { pullRequestId },
-    });
+    const allFindingsForPR: FindingRecord[] =
+      await prisma.finding.findMany({
+        where: {
+          pullRequestId,
+        },
+      });
 
-    const openList = allFindingsForPR.filter((f) => f.status === 'OPEN');
-    const resolvedList = allFindingsForPR.filter((f) => f.status === 'RESOLVED');
-    const blockingCount = openList.filter((f) => f.blocking).length;
+    const openList = allFindingsForPR.filter(
+      (f: FindingRecord) => f.status === 'OPEN',
+    );
+
+    const resolvedList = allFindingsForPR.filter(
+      (f: FindingRecord) => f.status === 'RESOLVED',
+    );
+
+    const blockingCount = openList.filter(
+      (f: FindingRecord) => f.blocking,
+    ).length;
+
     const isBlocked = blockingCount > 0;
 
     // 5. Update PullRequest parent entity
     await prisma.pullRequest.update({
-      where: { id: pullRequestId },
+      where: {
+        id: pullRequestId,
+      },
       data: {
         blockingIssueCount: blockingCount,
         totalIssueCount: openList.length + resolvedList.length,
