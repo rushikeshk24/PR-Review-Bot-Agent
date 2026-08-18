@@ -155,14 +155,14 @@ importers:
   packages/database:
     dependencies:
       '@prisma/client':
-        specifier: ^5.18.0
+        specifier: ^5.17.0
         version: 5.22.0(prisma@5.22.0)
     devDependencies:
-      '@codelens/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
       prisma:
-        specifier: ^5.18.0
+        specifier: ^5.17.0
         version: 5.22.0
       typescript:
         specifier: ^5.5.4
