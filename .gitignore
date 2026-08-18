@@ -43,3 +43,6 @@ coverage/
 
 # Generated
 packages/database/src/generated/
+
+
+*.tsbuildinfo
